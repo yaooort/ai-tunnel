@@ -1,0 +1,10 @@
+AI Tunnel 第三方软件说明
+
+本应用包含 frp 客户端 frpc，版本 0.71.0。
+项目：https://github.com/fatedier/frp
+发布：https://github.com/fatedier/frp/releases/tag/v0.71.0
+许可：Apache License, Version 2.0
+
+frpc 使用官方发布的 macOS ARM64 和 AMD64 可执行文件，仅合并架构并执行本地代码签名，未修改其程序源码。
+完整许可文本随应用保存在 Contents/Resources/Licenses/frp-LICENSE.txt。
+构建脚本会验证官方发布压缩包的 SHA256，并从验证后的压缩包提取许可文件。

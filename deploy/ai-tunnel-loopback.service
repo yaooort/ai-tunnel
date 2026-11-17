@@ -1,0 +1,14 @@
+[Unit]
+Description=Ensure local loopback for AI Tunnel relay
+After=network-online.target
+Before=caddy.service ai-tunnel-frps.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/sbin/ip link set lo up
+ExecStart=/usr/sbin/ip address replace 127.0.0.1/8 dev lo
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

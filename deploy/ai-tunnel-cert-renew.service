@@ -1,0 +1,6 @@
+[Unit]
+Description=Renew AI Tunnel private certificate near expiry
+[Service]
+Type=oneshot
+ExecStart=/opt/ai-tunnel/renew-tunnel-cert
+UMask=0077

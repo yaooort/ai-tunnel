@@ -1,0 +1,18 @@
+bindAddr = "0.0.0.0"
+bindPort = 7000
+proxyBindAddr = "127.0.0.1"
+allowPorts = [{ single = 18080 }]
+maxPortsPerClient = 1
+auth.method = "token"
+auth.additionalScopes = ["NewWorkConns"]
+auth.tokenSource.type = "file"
+auth.tokenSource.file.path = "/etc/ai-tunnel/token"
+transport.tcpMux = true
+transport.tcpMuxKeepaliveInterval = 30
+transport.heartbeatTimeout = -1
+transport.tls.force = true
+transport.tls.certFile = "/etc/ai-tunnel/tls/server.crt"
+transport.tls.keyFile = "/etc/ai-tunnel/tls/server.key"
+log.to = "console"
+log.level = "info"
+log.disablePrintColor = true

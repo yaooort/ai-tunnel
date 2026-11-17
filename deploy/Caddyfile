@@ -1,0 +1,13 @@
+{
+	servers {
+		protocols h1 h2
+	}
+}
+tunnel.example.com {
+	reverse_proxy http://127.0.0.1:18080 {
+		transport http {
+			versions 1.1
+			dial_timeout 10s
+		}
+	}
+}
