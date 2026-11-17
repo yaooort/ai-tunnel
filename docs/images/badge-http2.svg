@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="107" height="22" viewBox="0 0 107 22" role="img" aria-labelledby="title">
+  <title id="title">HTTPS HTTP/2</title>
+  <path fill="#293241" d="M0 0h49v22H0z"/>
+  <path fill="#0F9D78" d="M49 0h58v22H49z"/>
+  <g fill="#fff" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Arial,sans-serif" font-size="11">
+    <text x="24.5" y="15">HTTPS</text>
+    <text x="78.0" y="15">HTTP/2</text>
+  </g>
+</svg>

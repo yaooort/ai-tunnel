@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="84" height="22" viewBox="0 0 84 22" role="img" aria-labelledby="title">
+  <title id="title">macOS 13+</title>
+  <path fill="#293241" d="M0 0h48v22H0z"/>
+  <path fill="#374151" d="M48 0h36v22H48z"/>
+  <g fill="#fff" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Arial,sans-serif" font-size="11">
+    <text x="24.0" y="15">macOS</text>
+    <text x="66.0" y="15">13+</text>
+  </g>
+</svg>

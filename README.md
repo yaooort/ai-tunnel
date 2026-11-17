@@ -1,68 +1,148 @@
-# AI Tunnel
+<div align="center">
 
-原生 macOS 界面管理自建 frp 隧道，将本机 HTTP 服务通过 Caddy 提供给公网。支持 HTTPS / HTTP/2、断线重连和登录启动。
+<img src="docs/images/logo.svg" width="84" height="84" alt="AI Tunnel 标志" />
 
-```text
-公网调用方 → HTTPS / HTTP/2 → Caddy :443
-          → HTTP/1.1 或 h2c → 服务器 127.0.0.1:18080
-          → frp TLS 隧道 → Mac frpc → 本机 127.0.0.1:8080
-```
+<h1>AI Tunnel</h1>
 
-## 下载公开版
+<p><strong>让本机服务，通过自己的服务器连接公网。</strong></p>
+<p>原生 macOS 客户端 · 自建 frp 隧道 · Caddy HTTPS / HTTP/2</p>
 
-前往 [GitHub Releases](https://github.com/yaooort/ai-tunnel/releases/latest) 下载 **AI Tunnel Public 1.1.0** 的 M1 / Apple Silicon DMG（macOS 13+），将 App 拖入“应用程序”。也提供 ZIP 和 SHA256 校验清单。
+<p>
+  <a href="https://github.com/yaooort/ai-tunnel/releases/tag/v1.1.0"><img alt="版本 1.1.0" src="docs/images/badge-version.svg" /></a>
+  <img alt="macOS 13 或更高" src="docs/images/badge-macos.svg" />
+  <img alt="Apple Silicon ARM64" src="docs/images/badge-silicon.svg" />
+  <img alt="支持 HTTP/2" src="docs/images/badge-http2.svg" />
+</p>
 
-公开版不带任何预置服务器、Token 或 CA 配置。首次打开点击“配置服务器”，可以填写自己的服务器信息，也可以导入安装脚本生成的连接 JSON。保存后配置进入当前 macOS 用户的钥匙串；公开版使用独立的 App ID 和钥匙串空间。
+<p><strong>简体中文</strong> · <a href="README.en.md">English</a></p>
 
-程序使用 ad-hoc 本地签名，**未进行 Developer ID 签名或 Apple 公证**。首次打开如被系统阻止，请在“系统设置 → 隐私与安全性”中允许本应用打开。
+<p>
+  <a href="https://github.com/yaooort/ai-tunnel/releases/download/v1.1.0/AI-Tunnel-Public-1.1.0-macOS-arm64.dmg"><strong>下载 M1 / Apple Silicon 安装包</strong></a>
+  &nbsp; · &nbsp; <a href="#quick-start">快速开始</a>
+  &nbsp; · &nbsp; <a href="https://github.com/yaooort/ai-tunnel/releases/tag/v1.1.0">发行文件与校验</a>
+</p>
 
-## 一键安装 Linux 服务端
+</div>
 
-先准备自己的域名，将 A/AAAA 记录解析到服务器（Cloudflare 使用“仅 DNS”）。允许入站 TCP **80、443、7000**；18080 仅监听服务器回环。
+---
 
-将下面的 `tunnel.example.com` 换成自己的域名，在**全新的 Linux 服务器**上执行：
+## 界面预览
+
+<table>
+  <tr>
+    <td width="50%" valign="top"><a href="docs/images/main-window.png"><img src="docs/images/main-window.png" alt="AI Tunnel 主窗口：连接状态、本机端口和登录启动设置，浅色模式" width="100%" /></a></td>
+    <td width="50%" valign="top"><a href="docs/images/server-settings.png"><img src="docs/images/server-settings.png" alt="AI Tunnel 服务器配置：地址、TLS、Token 与 CA 证书，深色模式" width="100%" /></a></td>
+  </tr>
+  <tr>
+    <td align="center"><strong>连接与启动设置</strong><br /><sub>浅色模式 · 主窗口</sub></td>
+    <td align="center"><strong>自己的服务器配置</strong><br /><sub>深色模式 · 配置窗口</sub></td>
+  </tr>
+</table>
+
+界面图由实际 SwiftUI 视图离屏渲染，展示未配置状态。文档提供中英双语；当前应用界面为简体中文。
+
+## 为什么使用 AI Tunnel
+
+| 能力 | 使用体验 |
+| --- | --- |
+| 自建中转 | 使用自己的域名和 Linux 服务器，本机无需公网 IP 或路由器端口映射。 |
+| 原生 macOS 界面 | 管理连接、本机端口和日志，关闭窗口后仍可从菜单栏操作。 |
+| HTTPS / HTTP/2 | Caddy 管理公网证书，后端按需使用 HTTP/1.1 或 h2c。 |
+| 自动恢复 | 支持断线重连、隧道进程恢复、登录启动和打开应用后自动连接。 |
+| 自己的配置 | 手动填写或导入连接文件，保存到 macOS 钥匙串；公开安装包无预置凭据。 |
+
+<a id="quick-start"></a>
+
+## 快速开始
+
+### 1. 下载 Mac 客户端
+
+| 下载 | 适用场景 |
+| --- | --- |
+| [M1 / Apple Silicon DMG](https://github.com/yaooort/ai-tunnel/releases/download/v1.1.0/AI-Tunnel-Public-1.1.0-macOS-arm64.dmg) | 推荐：打开后将 **AI Tunnel Public.app** 拖入“应用程序”。 |
+| [ARM64 ZIP](https://github.com/yaooort/ai-tunnel/releases/download/v1.1.0/AI-Tunnel-Public-1.1.0-macOS-arm64.zip) | 直接解压使用。 |
+| [SHA256SUMS](https://github.com/yaooort/ai-tunnel/releases/download/v1.1.0/SHA256SUMS) | 校验下载文件。 |
+
+要求 **macOS 13+ / Apple Silicon**。当前公开版本使用 **ad-hoc 签名，未进行 Developer ID 签名或 Apple 公证**；首次打开如被阻止，请到“系统设置 → 隐私与安全性”中允许本应用打开。
+
+### 2. 一键安装 Linux 中转
+
+准备一台**全新 Linux 服务器**和自己的域名，将域名 **A 记录**解析到服务器公网 IPv4（Cloudflare 选择“仅 DNS”），放行入站 TCP **80、443、7000**。
+
+把 `tunnel.example.com` 换成自己的域名后执行：
 
 ```bash
 curl -fsSL https://github.com/yaooort/ai-tunnel/releases/download/v1.1.0/install.sh \
   | sudo sh -s -- --domain tunnel.example.com
 ```
 
-已经是 root 时去掉 `sudo`。服务器需预装 `curl`；其余依赖由安装器自动安装。该命令安装固定版本，不会随主分支变动。
+已经是 root 时去掉 `sudo`。需预装 `curl`，其余依赖由安装器处理。
 
-安装器会自动：
+安装器会校验官方二进制 SHA256，安装 frps / Caddy，生成随机 Token、私有 CA 和证书，并配置启动、进程恢复及证书续期。连接文件写入 **`/root/ai-tunnel.connection.json`**，权限为 `600`。
 
-- 识别 Linux 架构及包管理器，校验官方 frp / Caddy 压缩包的 SHA256。
-- 安装 frps、Caddy，生成随机隧道 Token、私有 CA 和 TLS 证书。
-- 配置 HTTPS / HTTP/2、开机启动、进程恢复和证书续期。
-- 将权限为 `600` 的客户端连接文件写入 `/root/ai-tunnel.connection.json`，不会把 Token 打印到终端。
+> 默认本机后端为 **HTTP/1.1**。若本机服务使用明文 HTTP/2，在安装命令末尾追加 **`--backend h2c`**。两种模式的公网入口都支持 HTTPS / HTTP/2。
 
-支持 **x86_64、ARM64、ARMv7**。自动服务管理支持 **systemd / OpenRC**；依赖安装支持 **apt、dnf、yum、apk、zypper、pacman**，覆盖 Debian/Ubuntu、Rocky/AlmaLinux/RHEL/Fedora、Alpine、openSUSE、Arch 等常见发行版。要求 OpenSSL 1.1.1+、Python 3 和可访问 GitHub 的网络。无法承诺所有 Linux 发行版、旧系统和所有 CPU；不支持的环境会报错退出。无 init 的容器可用 `--no-start` 安装文件后自行管理进程。
+### 3. 导入配置，连接服务
 
-已有中转或 Caddy 配置、二进制的服务器会被拒绝覆盖。安装器不会修改云平台安全组或全局防火墙，请自行放行对应端口。
+1. 用 SSH/SCP 私下将服务器的 `/root/ai-tunnel.connection.json` 传到 Mac，随后删除服务器上的临时导出文件。
+2. 打开 **AI Tunnel Public → 配置服务器 → 导入连接文件 → 保存**；也可手填地址、端口、TLS 域名、公网 HTTPS 地址、Token 和 CA。
+3. 启动本机业务服务，确认监听 `127.0.0.1:8080` 且协议与中转配置一致，然后点击 **连接**。
+4. 需要登录后自动恢复时，同时开启 **登录时启动应用** 和 **打开应用后自动连接**。
 
-默认后端是 **HTTP/1.1**。本机服务若确实使用明文 HTTP/2，追加 `--backend h2c`：
+关闭窗口会继续运行，退出应用会停止隧道。电脑睡眠或业务服务停止时，公网业务不可用；应用不会自动启动你的业务程序。
 
-```bash
-curl -fsSL https://github.com/yaooort/ai-tunnel/releases/download/v1.1.0/install.sh \
-  | sudo sh -s -- --domain tunnel.example.com --backend h2c
+## 支持范围
+
+| 项目 | 支持情况 |
+| --- | --- |
+| 公开客户端 | Apple Silicon / ARM64，macOS 13+ |
+| Linux 架构 | x86_64、ARM64、ARMv7 |
+| 服务管理 | systemd 或 OpenRC；无 init 的容器可用 `--no-start` 后自行管理进程 |
+| 包管理器 | apt、dnf、yum、apk、zypper、pacman |
+| 常见发行版 | Debian / Ubuntu、Rocky / AlmaLinux / RHEL / Fedora、Alpine、openSUSE、Arch |
+| 服务端依赖 | OpenSSL 1.1.1+、Python 3、可访问 GitHub 的网络 |
+| 已有服务器 | 检测到现有中转 / Caddy 配置或相关二进制时拒绝覆盖 |
+
+安装器面向上述常见环境，无法覆盖所有 Linux 发行版、旧系统或 CPU。它不会修改云平台安全组或全局防火墙。
+
+<details>
+<summary><strong>进阶配置 · 端口、后端协议与调用链路</strong></summary>
+
+### 安装参数
+
+| 参数 | 默认值 | 含义 |
+| --- | --- | --- |
+| `--domain` | 必填 | 用于公网 HTTPS 和隧道证书的域名 |
+| `--server-address` | 同域名 | Mac 连接的服务器地址，可填写公网 IPv4 或域名 |
+| `--backend` | `http1` | 本机业务协议，可选 `http1` / `h2c` |
+| `--frp-port` | `7000` | Mac 连接 frps 的端口，需公网放行 |
+| `--remote-port` | `18080` | 服务器回环映射端口，需与客户端配置一致 |
+| `--check` | — | 只检测环境，不安装 |
+| `--no-start` | — | 生成并校验文件，不启动服务 |
+
+`18080` 仅监听 `127.0.0.1`，无需对公网开放。同一服务器映射端口只供一个客户端占用。
+安装器要求自定义的两个端口不同，且均在 `1024–65535` 范围内。
+
+```text
+公网调用方
+  └─ HTTPS / HTTP/2 → Caddy :443
+       └─ HTTP/1.1 或 h2c → 127.0.0.1:18080
+            └─ frp TLS 隧道 → Mac frpc
+                 └─ TCP → 127.0.0.1:8080
 ```
 
-其他选项：`--server-address 公网IP或域名`（默认使用域名）、`--frp-port 7000`、`--remote-port 18080`。两端配置需要一致。只检测环境而不安装，可运行 `sh install.sh --check`。
+本地源码部署也可运行：
 
-## 连接 Mac
+```bash
+sudo sh deploy/install.sh --source-dir "$(pwd)/deploy" --domain tunnel.example.com
+```
 
-1. 通过 SSH/SCP 私下把服务器 `/root/ai-tunnel.connection.json` 传到 Mac，随后删除服务器上的临时导出文件。
-2. 打开 **AI Tunnel Public → 配置服务器 → 导入连接文件**，确认后保存。也可以手动填写服务器地址、7000 端口、TLS 域名、公网 HTTPS 地址、Token、CA 的 PEM 文本；高级设置中的映射端口默认为 18080。
-3. 启动本机业务服务，确认它监听 `127.0.0.1:8080`，协议与服务端的 `--backend` 一致。
-4. 点击“连接”，需要登录后自动恢复时，同时打开两个启动开关。
+</details>
 
-关闭窗口会继续运行；退出应用会断开隧道。连接状态表示代理注册结果，业务接口还需单独验证。程序不会启动本机业务或阻止电脑睡眠。同一服务器映射端口只供一个客户端连接。
+<details>
+<summary><strong>服务端维护 · 状态、日志、证书与重新导出</strong></summary>
 
-例如 OpenAI 兼容服务的 Base URL 填 `https://你的域名/v1`。业务 API Key 由本机服务管理，独立于隧道 Token；模型列表为 `/v1/models`。`/v1` 本身返回 404 不表示隧道失败。
-
-## 服务端维护
-
-systemd：
+### systemd
 
 ```bash
 systemctl status ai-tunnel-frps ai-tunnel-caddy
@@ -70,34 +150,51 @@ journalctl -u ai-tunnel-frps -u ai-tunnel-caddy -n 100 --no-pager
 systemctl list-timers ai-tunnel-cert-renew.timer
 ```
 
-OpenRC：
+### OpenRC
 
 ```bash
 rc-service ai-tunnel-frps status
 rc-service ai-tunnel-caddy status
+rc-service ai-tunnel-cert-renew status
 tail -n 100 /var/log/ai-tunnel/frps.log /var/log/ai-tunnel/caddy.log
 ```
 
-再次导出连接文件（不会覆盖已存在的目标）：
+### 重新导出连接文件
 
 ```bash
 sudo python3 /opt/ai-tunnel/export-connection \
   --output /root/ai-tunnel-new.connection.json
 ```
 
-域名、端口和后端协议记录在 `/etc/ai-tunnel/relay.json`；运行配置为 `/etc/ai-tunnel/frps.toml` 与 `/etc/caddy/Caddyfile`。证书和私钥保存在 `/var/lib/ai-tunnel/pki`，需私下备份。续期保留 CA，正常续期无需修改 Mac 配置。systemd 每日检查，OpenRC 由受监管的续期进程每日检查；公网证书由 Caddy 自动续期。
+导出不会覆盖已存在的目标文件。域名、端口和后端参数保存在 `/etc/ai-tunnel/relay.json`，运行配置为 `/etc/ai-tunnel/frps.toml` 与 `/etc/caddy/Caddyfile`。
 
-## 从源码构建
+私有 PKI 位于 `/var/lib/ai-tunnel/pki`，需私下备份。systemd 或 OpenRC 定期检查隧道证书续期，保留原 CA，正常续期无需修改 Mac 配置；公网证书由 Caddy 自动续期。
 
-公开 M1 版需要 macOS、Xcode Command Line Tools（Swift 6 工具链）和官方 frp 发行包下载网络：
+</details>
+
+<details>
+<summary><strong>开发者 · 从源码构建与运行测试</strong></summary>
+
+需要 macOS、Xcode Command Line Tools（Swift 6）及官方 frp 下载网络。
+
+### 构建无预置凭据的公开 M1 版
 
 ```bash
 bash scripts/build-public-m1.sh
 ```
 
-产物位于 `dist/public`，包括 DMG、ZIP、校验清单和验证报告。此脚本从源码新建 App，不读取 `private/` 或自用 App；公开版 Bundle ID 为 `vip.k-line.aitunnel.public`。
+产物位于 `dist/public`：DMG、ZIP、校验清单和验证报告。公开版 Bundle ID 为 `vip.k-line.aitunnel.public`，使用独立钥匙串空间。
 
-原有免导入自用构建仍保留：
+### 运行隔离测试
+
+```bash
+./tests/build-harness.sh
+'./tests/.build/AppModel Harness.app/Contents/MacOS/AppModelHarness'
+```
+
+21 组测试使用假的 frpc、临时目录和独立钥匙串项，不连接生产中转。详见 [测试说明](tests/README.md)。可选 h2c fixture 要求 Go 1.24+，普通 App 构建不需要 Go。
+
+### 原免导入自用构建
 
 ```bash
 # 先准备自己的 private/ai-tunnel.connection.json
@@ -105,17 +202,26 @@ bash scripts/build-macos.sh
 bash scripts/package-m1.sh
 ```
 
-**自用脚本生成的 App、ZIP、DMG 含有预置凭据，只能私下分发。** 不要把它们放入公开 Release。公开发布仅使用 `build-public-m1.sh` 的 `dist/public` 产物。
+这些自用产物**含预置凭据，只能私下分发**。公开 Release 仅使用 `build-public-m1.sh` 的 `dist/public` 产物。
 
-本地部署源码可直接运行 `sudo sh deploy/install.sh --source-dir "$(pwd)/deploy" --domain 自己的域名`，无需先下载 Release 的服务端载荷。
+</details>
 
-## 验证与许可说明
+## 常见问题
 
-```bash
-./tests/build-harness.sh
-'./tests/.build/AppModel Harness.app/Contents/MacOS/AppModelHarness'
-```
+**“已连接”，为什么业务请求仍然失败？**
 
-隔离测试使用假的 frpc 子进程、临时目录和独立钥匙串项，不连接生产中转。详见 [测试说明](tests/README.md)。可选 h2c fixture 需要 Go 1.24+，普通 App 构建不需要 Go。
+这个状态表示 frp 代理注册成功。还需确认本机服务已启动、端口正确、HTTP/1.1 或 h2c 协议匹配，并请求真实业务路径。
 
-[frp](https://github.com/fatedier/frp) 使用 Apache License 2.0；App 构建脚本校验官方压缩包并提取完整许可随程序分发，详见 [第三方说明](resources/ThirdPartyNotices.txt)。服务端从 [Caddy 官方发行包](https://github.com/caddyserver/caddy/releases) 安装 Caddy。
+**怎样连接 OpenAI 兼容服务？**
+
+客户端 Base URL 通常填写 `https://你的域名/v1`，模型列表为 `/v1/models`。业务 API Key 由本机服务管理，独立于隧道 Token；直接访问 `/v1` 返回 404 不代表隧道故障。
+
+**有没有经过验证？**
+
+客户端隔离测试、打包验签、Debian / Alpine 安装、Linux ARM64 容器执行、HTTP/2 流式响应及异常退出后恢复均已验证。详细边界见 [发行验证报告](https://github.com/yaooort/ai-tunnel/releases/tag/v1.1.0)：未做 M1 实机运行或 Linux 物理机开机验收。
+
+## 第三方软件
+
+[frp](https://github.com/fatedier/frp) 使用 Apache License 2.0，完整许可随 App 分发，详见 [第三方说明](resources/ThirdPartyNotices.txt)。服务端使用 [Caddy 官方发行包](https://github.com/caddyserver/caddy/releases)。
+
+<p align="center"><sub>自己的 Mac · 自己的服务器 · 自己的公网入口</sub></p>

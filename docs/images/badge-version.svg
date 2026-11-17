@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="109" height="22" viewBox="0 0 109 22" role="img" aria-labelledby="title">
+  <title id="title">release v1.1.0</title>
+  <path fill="#293241" d="M0 0h50v22H0z"/>
+  <path fill="#087CFA" d="M50 0h59v22H50z"/>
+  <g fill="#fff" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Arial,sans-serif" font-size="11">
+    <text x="25.0" y="15">release</text>
+    <text x="79.5" y="15">v1.1.0</text>
+  </g>
+</svg>
