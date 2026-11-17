@@ -28,7 +28,18 @@ enum ConnectionStatus: String, Sendable {
     }
 }
 
-/// The personal build reads its preset connection from the application resources.
+/// A form draft. Credentials are persisted only after validation succeeds.
+struct ConnectionSettings: Equatable, Sendable {
+    var serverAddress: String = ""
+    var serverPort: Int = 7000
+    var tlsServerName: String = ""
+    var publicURL: String = ""
+    var remotePort: Int = 18080
+    var token: String = ""
+    var caCertificatePEM: String = ""
+}
+
+/// Public builds use Keychain settings; personal builds may include a preset.
 private struct ConnectionConfiguration: Codable, Sendable {
     let schemaVersion: Int
     let serverAddress: String
@@ -39,35 +50,80 @@ private struct ConnectionConfiguration: Codable, Sendable {
     let caCertificatePEM: String
     let token: String
 
+    init(settings: ConnectionSettings) {
+        schemaVersion = 1
+        serverAddress = settings.serverAddress.trimmingCharacters(in: .whitespacesAndNewlines)
+        serverPort = settings.serverPort
+        tlsServerName = settings.tlsServerName.trimmingCharacters(in: .whitespacesAndNewlines)
+        publicURL = settings.publicURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        remotePort = settings.remotePort
+        caCertificatePEM = settings.caCertificatePEM.trimmingCharacters(in: .whitespacesAndNewlines)
+        token = settings.token
+    }
+
+    var settings: ConnectionSettings {
+        ConnectionSettings(serverAddress: serverAddress, serverPort: serverPort,
+                           tlsServerName: tlsServerName, publicURL: publicURL,
+                           remotePort: remotePort, token: token, caCertificatePEM: caCertificatePEM)
+    }
+
     func validate() throws {
         guard schemaVersion == 1 else {
             throw TunnelError.message("连接文件版本不受支持，请重新获取连接文件。")
         }
-        let allowedHost = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.-:")
-        guard !serverAddress.isEmpty, serverAddress.count <= 253,
-              serverAddress.unicodeScalars.allSatisfy({ allowedHost.contains($0) }),
-              !tlsServerName.isEmpty, tlsServerName.count <= 253,
-              tlsServerName.unicodeScalars.allSatisfy({ allowedHost.contains($0) }),
-              (1...65535).contains(serverPort), (1...65535).contains(remotePort) else {
-            throw TunnelError.message("连接文件中的服务器地址或端口无效。")
+        guard Self.isValidHost(serverAddress) else {
+            throw TunnelError.message("服务器地址必须是有效的域名或 IP 地址，不含协议、端口或路径。")
         }
-        guard let url = URL(string: publicURL), url.scheme == "https",
-              url.host != nil, url.user == nil, url.password == nil,
-              url.query == nil, url.fragment == nil else {
-            throw TunnelError.message("连接文件中的公网地址必须是有效的 HTTPS 地址。")
+        guard Self.isValidHost(tlsServerName) else {
+            throw TunnelError.message("TLS 服务名必须是证书对应的有效域名或 IP 地址。")
+        }
+        guard (1...65535).contains(serverPort), (1...65535).contains(remotePort) else {
+            throw TunnelError.message("服务器端口和远程转发端口必须在 1 到 65535 之间。")
+        }
+        let publicAuthority = publicURL.dropFirst("https://".count).prefix { !"/?#".contains($0) }
+        guard publicURL.utf8.count <= 2048, !publicAuthority.hasSuffix(":"),
+              !publicURL.unicodeScalars.contains(where: { CharacterSet.whitespacesAndNewlines.union(.controlCharacters).contains($0) }),
+              let url = URLComponents(string: publicURL), url.scheme?.lowercased() == "https",
+              let host = url.host, Self.isValidHost(host.trimmingCharacters(in: CharacterSet(charactersIn: "[]"))),
+              url.user == nil, url.password == nil, url.query == nil, url.fragment == nil,
+              url.rangeOfPort == nil || url.port.map({ (1...65535).contains($0) }) == true else {
+            throw TunnelError.message("公网地址必须是有效的 HTTPS 地址，且不含账号、查询参数或片段。")
         }
         guard (16...4096).contains(token.utf8.count),
-              !token.contains(where: { $0.isNewline || $0 == "\0" }) else {
-            throw TunnelError.message("连接文件中的认证凭据无效。")
+              !token.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }) else {
+            throw TunnelError.message("认证 Token 必须为 16 到 4096 字节，且不含换行或控制字符。")
         }
-        let certificateData = caCertificatePEM
-            .replacingOccurrences(of: "-----BEGIN CERTIFICATE-----", with: "")
-            .replacingOccurrences(of: "-----END CERTIFICATE-----", with: "")
-            .components(separatedBy: .whitespacesAndNewlines).joined()
-        guard caCertificatePEM.contains("-----BEGIN CERTIFICATE-----"),
-              let der = Data(base64Encoded: certificateData),
-              SecCertificateCreateWithData(nil, der as CFData) != nil else {
-            throw TunnelError.message("连接文件中的 CA 证书无效。")
+        guard !caCertificatePEM.isEmpty, caCertificatePEM.utf8.count <= 96 * 1024 else {
+            throw TunnelError.message("请填写有效的 PEM 格式 CA 证书，大小不得超过 96 KB。")
+        }
+        let certificateExpression = try NSRegularExpression(
+            pattern: "-----BEGIN CERTIFICATE-----([A-Za-z0-9+/=\\r\\n \\t]+)-----END CERTIFICATE-----")
+        let certificateRange = NSRange(caCertificatePEM.startIndex..., in: caCertificatePEM)
+        let certificates = certificateExpression.matches(in: caCertificatePEM, range: certificateRange)
+        let remainder = certificateExpression.stringByReplacingMatches(in: caCertificatePEM, range: certificateRange, withTemplate: "")
+        guard !certificates.isEmpty, remainder.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw TunnelError.message("CA 证书必须只包含完整的 PEM 证书块。")
+        }
+        for certificate in certificates {
+            guard let range = Range(certificate.range(at: 1), in: caCertificatePEM),
+                  let der = Data(base64Encoded: caCertificatePEM[range].components(separatedBy: .whitespacesAndNewlines).joined()),
+                  SecCertificateCreateWithData(nil, der as CFData) != nil else {
+                throw TunnelError.message("CA 证书无法解析，请检查完整的 PEM 证书内容。")
+            }
+        }
+    }
+
+    private static func isValidHost(_ value: String) -> Bool {
+        guard !value.isEmpty, value.utf8.count <= 253 else { return false }
+        var ipv4 = in_addr()
+        var ipv6 = in6_addr()
+        if value.withCString({ inet_pton(AF_INET, $0, &ipv4) }) == 1 ||
+            value.withCString({ inet_pton(AF_INET6, $0, &ipv6) }) == 1 { return true }
+        if value.allSatisfy({ $0.isASCII && ($0.isNumber || $0 == ".") }) { return false }
+        let domain = value.hasSuffix(".") ? String(value.dropLast()) : value
+        return domain.split(separator: ".", omittingEmptySubsequences: false).allSatisfy { label in
+            !label.isEmpty && label.utf8.count <= 63 && label.first != "-" && label.last != "-" &&
+                label.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "-") })
         }
     }
 }
@@ -80,7 +136,7 @@ private enum TunnelError: LocalizedError {
 }
 
 private enum ConnectionKeychain {
-    static let service = "vip.k-line.aitunnel.connection"
+    static let service = (Bundle.main.bundleIdentifier ?? "vip.k-line.aitunnel") + ".connection"
     static let account = "active-connection"
 
     static func load(service: String) throws -> ConnectionConfiguration? {
@@ -140,7 +196,7 @@ final class AppModel: ObservableObject {
     }
     @Published private(set) var status: ConnectionStatus = .disconnected
     @Published private(set) var statusText: String = "未连接"
-    @Published private(set) var detailText: String = "点击连接，将本机服务连接到公网。"
+    @Published private(set) var detailText: String = "请先打开服务器配置，填写自己的中转服务器连接信息。"
     @Published private(set) var logs: [String] = []
     @Published private(set) var hasCredentials: Bool = false
     @Published var autoConnect: Bool = false {
@@ -149,7 +205,8 @@ final class AppModel: ObservableObject {
     @Published private(set) var launchAtLogin: Bool = false
     @Published var errorMessage: String?
 
-    var publicURL: String { configuration?.publicURL ?? "https://tunnel.example.com" }
+    var publicURL: String { configuration?.publicURL ?? "未配置服务器" }
+    var connectionSettings: ConnectionSettings { configuration?.settings ?? ConnectionSettings() }
     var canConnect: Bool { hasCredentials && !isRunning && validatedPort != nil }
     var isRunning: Bool { wantsConnection || process != nil }
 
@@ -212,12 +269,11 @@ final class AppModel: ObservableObject {
             if hasCredentials {
                 detailText = "点击连接，将 127.0.0.1:\(localPort) 连接到公网。"
             } else {
-                errorMessage = "应用连接配置缺失，请重新安装完整的 AI Tunnel。"
-                detailText = "应用连接配置缺失。"
+                detailText = "请先打开服务器配置，填写自己的中转服务器连接信息。"
             }
         } catch {
-            errorMessage = "无法读取应用连接配置，请重新安装完整的 AI Tunnel。"
-            detailText = "应用连接配置不可用。"
+            errorMessage = "无法读取连接配置，请检查应用内置配置或重新填写服务器配置。"
+            detailText = "连接配置不可用，请打开服务器配置进行检查。"
         }
         if autoConnect && hasCredentials {
             Task { @MainActor [weak self] in
@@ -227,18 +283,27 @@ final class AppModel: ObservableObject {
         }
     }
 
-    /// Kept for isolated developer verification; the personal app needs no import flow.
+    /// Personal builds retain preset priority on the next launch; public builds restore Keychain settings.
+    func saveConnectionSettings(_ settings: ConnectionSettings) throws {
+        guard !isRunning else {
+            throw TunnelError.message("请先断开连接，再修改服务器配置。")
+        }
+        let updated = ConnectionConfiguration(settings: settings)
+        try updated.validate()
+        try ConnectionKeychain.save(updated, service: keychainService)
+        configuration = updated
+        hasCredentials = true
+        errorMessage = nil
+        setStatus(.disconnected, detail: "服务器配置已保存，可以连接 127.0.0.1:\(localPort)。")
+        appendLog("服务器配置已保存到钥匙串。")
+    }
+
     func importConnection(from url: URL) throws {
         guard !isRunning else {
             throw TunnelError.message("请先断开连接，再导入新的连接配置。")
         }
         let imported = try Self.readConfiguration(from: url)
-        try ConnectionKeychain.save(imported, service: keychainService)
-        configuration = imported
-        hasCredentials = true
-        errorMessage = nil
-        setStatus(.disconnected, detail: "点击连接，将 127.0.0.1:\(localPort) 连接到公网。")
-        appendLog("已加载连接配置。")
+        try saveConnectionSettings(imported.settings)
     }
 
     private static func readConfiguration(from url: URL) throws -> ConnectionConfiguration {
@@ -260,7 +325,7 @@ final class AppModel: ObservableObject {
     func connect() {
         guard !isRunning else { return }
         guard configuration != nil else {
-            errorMessage = "应用连接配置不可用，请重新安装完整的 AI Tunnel。"
+            errorMessage = "请先配置中转服务器，再连接本机服务。"
             return
         }
         guard validatedPort != nil else {
@@ -311,12 +376,13 @@ final class AppModel: ObservableObject {
     }
 
     func copyPublicURL() {
+        guard let publicURL = configuration?.publicURL else { return }
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(publicURL, forType: .string)
     }
 
     func openPublicURL() {
-        guard let url = URL(string: publicURL) else { return }
+        guard let publicURL = configuration?.publicURL, let url = URL(string: publicURL) else { return }
         NSWorkspace.shared.open(url)
     }
 

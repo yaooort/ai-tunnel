@@ -1,6 +1,6 @@
 # AppModel verification
 
-The harness uses isolated UserDefaults, a unique Keychain service, temporary runtime and log directories. It removes its Keychain item, defaults and temporary files when it finishes. It prints result or state JSON, never credential contents or captured frpc logs. Legacy development checks explicitly disable bundled presets. Preset checks inject only locally generated fake connection files and never read the private production preset.
+The harness uses isolated UserDefaults, a unique Keychain service scoped to its Bundle ID, and temporary runtime and log directories. It removes its Keychain items, defaults and temporary files when it finishes. It prints result or state JSON, never credential contents or captured frpc logs. Development and manual configuration checks explicitly disable bundled presets. Preset checks inject only locally generated fake connection files and never read the private production preset.
 
 Run isolated tests with the fake child process:
 
@@ -9,7 +9,9 @@ Run isolated tests with the fake child process:
 './tests/.build/AppModel Harness.app/Contents/MacOS/AppModelHarness'
 ```
 
-The 15 test groups cover automatic startup with a valid preset and no Keychain item, preset priority without changing old Keychain data, invalid or missing presets failing without fallback or credential disclosure, legacy development imports and Keychain restoration, missing credentials, invalid local ports, private runtime file modes, proxy environment clearing, credential redaction in UI and disk logs, duplicate instance protection, disconnect cleanup, truthful proxy registration status, child process recovery, cancellation of scheduled retries, control connection recovery, bounded disk log rotation, and application exit cleanup.
+The 21 test groups cover empty public configuration defaults and safe address actions, manual settings save and restoration, Bundle ID isolation from personal settings, validation failures preserving active and stored settings, connected edit rejection, and no credential contents in logs or UserDefaults. They retain the preset, import, port, private file mode, proxy environment, redaction, duplicate instance, disconnect, truthful registration state, process recovery, retry cancellation, control connection recovery, log rotation and application exit checks.
+
+Public builds have no preset and restore manually saved settings from their own Bundle ID's Keychain service. Personal builds retain preset priority at startup: a manual save updates the current session and Keychain, while the next launch still uses the bundled preset. Tests explicitly cover both behaviors.
 
 To observe a real connection, rebuild with the distribution's bundled frpc:
 

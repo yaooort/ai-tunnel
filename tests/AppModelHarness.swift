@@ -18,6 +18,9 @@ private final class TestContext {
 
     var runtime: URL { directory.appendingPathComponent("runtime", isDirectory: true) }
     var logDirectory: URL { directory.appendingPathComponent("logs", isDirectory: true) }
+    var keychainService: String {
+        (Bundle.main.bundleIdentifier ?? "vip.k-line.aitunnel") + ".connection.\(identifier)"
+    }
 
     init() throws {
         directory = FileManager.default.temporaryDirectory
@@ -44,7 +47,7 @@ private final class TestContext {
     func keychainSnapshot() throws -> Data? {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: "vip.k-line.aitunnel.connection.\(identifier)",
+            kSecAttrService as String: keychainService,
             kSecAttrAccount as String: "active-connection",
             kSecReturnData as String: true,
             kSecMatchLimit as String: kSecMatchLimitOne,
@@ -62,7 +65,7 @@ private final class TestContext {
         model.shutdown()
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: "vip.k-line.aitunnel.connection.\(identifier)",
+            kSecAttrService as String: keychainService,
             kSecAttrAccount as String: "active-connection",
         ]
         SecItemDelete(query as CFDictionary)
@@ -157,6 +160,14 @@ private struct AppModelHarness {
         let context = try TestContext()
         defer { context.cleanup(); unsetenv("AI_TUNNEL_HARNESS_MODE") }
         let model = context.model
+        try check(model.connectionSettings == ConnectionSettings() && model.publicURL == "未配置服务器" &&
+                  model.detailText.contains("配置") && model.errorMessage == nil,
+                  "Unconfigured public startup did not offer empty, editable settings.")
+        let clipboardVersion = NSPasteboard.general.changeCount
+        model.copyPublicURL()
+        try check(NSPasteboard.general.changeCount == clipboardVersion,
+                  "Unconfigured public address changed the user's clipboard.")
+        emit(["event": "pass", "test": "empty_settings_defaults_and_safe_unconfigured_address"])
         model.connect()
         try check(!model.isRunning && model.errorMessage != nil, "Missing credentials were not rejected.")
         emit(["event": "pass", "test": "missing_credentials"])
@@ -164,6 +175,7 @@ private struct AppModelHarness {
         let token = "ISOLATED_TEST_SECRET_\(UUID().uuidString)"
         let valid = try fixture(in: context.directory, token: token)
         try verifyPresetConfiguration(valid, token: token)
+        try verifyManualSettings(valid, token: token)
         let invalidVariants: [(String, (inout [String: Any]) -> Void)] = [
             ("schema", { $0["schemaVersion"] = 2 }),
             ("server", { $0["serverAddress"] = "host\nserverPort=1" }),
@@ -210,6 +222,17 @@ private struct AppModelHarness {
         model.connect()
         try check(await eventually { model.status == .connected }, "Fake tunnel never became connected.")
         try check(model.isRunning, "Connected tunnel is not running.")
+        let connectedSettings = model.connectionSettings
+        let connectedKeychain = try context.keychainSnapshot()
+        var replacement = connectedSettings
+        replacement.serverAddress = "changed.test.invalid"
+        var connectedSaveRejected = false
+        do { try model.saveConnectionSettings(replacement) } catch { connectedSaveRejected = true }
+        try check(connectedSaveRejected && model.connectionSettings == connectedSettings && model.status == .connected,
+                  "Editing settings while connected was not rejected without disturbing the tunnel.")
+        try check(try context.keychainSnapshot() == connectedKeychain,
+                  "Rejected connected settings edit changed Keychain.")
+        emit(["event": "pass", "test": "connected_settings_edits_are_rejected"])
         model.localPort = "9090"
         try check(model.localPort == "8080", "Port changed while connected.")
         for filename in ["token", "ca.crt", "frpc.toml", "frpc.pid", "client.lock"] {
@@ -304,7 +327,7 @@ private struct AppModelHarness {
         try check(!model.isRunning && !FileManager.default.fileExists(atPath: context.runtime.appendingPathComponent("token").path),
                   "Shutdown left runtime credentials behind.")
         emit(["event": "pass", "test": "application_shutdown_stops_child_and_cleans_runtime"])
-        emit(["event": "complete", "mode": "isolated_self_tests", "passed": 15])
+        emit(["event": "complete", "mode": "isolated_self_tests", "passed": 21])
     }
 
     private static func verifyPresetConfiguration(_ valid: URL, token: String) throws {
@@ -347,6 +370,101 @@ private struct AppModelHarness {
             try check(try context.keychainSnapshot() == oldItem, "Invalid preset changed the old Keychain item.")
         }
         emit(["event": "pass", "test": "invalid_preset_never_falls_back_or_exposes_credentials", "cases": 3])
+
+        var manualSettings = presetOverOldItem.connectionSettings
+        manualSettings.publicURL = "https://manual.test.invalid"
+        try presetOverOldItem.saveConnectionSettings(manualSettings)
+        try check(presetOverOldItem.publicURL == "https://manual.test.invalid",
+                  "Manual save did not update the current personal-build session.")
+        let presetRestart = context.duplicateModel(presetConnectionURL: preferredPreset)
+        defer { presetRestart.shutdown() }
+        try check(presetRestart.publicURL == "https://preset.test.invalid",
+                  "Personal build did not retain preset priority on the next launch.")
+        emit(["event": "pass", "test": "personal_preset_retains_startup_priority_after_manual_save"])
+    }
+
+    private static func verifyManualSettings(_ valid: URL, token: String) throws {
+        let context = try TestContext()
+        defer { context.cleanup() }
+        let fixtureData = try Data(contentsOf: valid)
+        guard let fixture = try JSONSerialization.jsonObject(with: fixtureData) as? [String: Any],
+              let certificate = fixture["caCertificatePEM"] as? String else {
+            throw HarnessFailure(message: "Cannot read generated manual-settings fixture.")
+        }
+        let legacyQuery: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: "vip.k-line.aitunnel.connection.\(context.identifier)",
+            kSecAttrAccount as String: "active-connection",
+        ]
+        var legacyItem = legacyQuery
+        legacyItem[kSecValueData as String] = fixtureData
+        try check(SecItemAdd(legacyItem as CFDictionary, nil) == errSecSuccess,
+                  "Cannot seed an isolated item in the personal app's namespace.")
+        defer { SecItemDelete(legacyQuery as CFDictionary) }
+        let publicStartup = context.duplicateModel()
+        defer { publicStartup.shutdown() }
+        try check(!publicStartup.hasCredentials && (try context.keychainSnapshot()) == nil,
+                  "Bundle-scoped settings loaded an item from the personal app's namespace.")
+        emit(["event": "pass", "test": "keychain_namespace_isolated_by_bundle_identifier"])
+
+        var settings = ConnectionSettings(serverAddress: " 127.0.0.1\n", serverPort: 7000,
+                                          tlsServerName: " test.invalid ", publicURL: " https://manual.test.invalid ",
+                                          remotePort: 18080, token: token, caCertificatePEM: certificate)
+        try context.model.saveConnectionSettings(settings)
+        settings.serverAddress = "127.0.0.1"
+        settings.tlsServerName = "test.invalid"
+        settings.publicURL = "https://manual.test.invalid"
+        settings.caCertificatePEM = certificate.trimmingCharacters(in: .whitespacesAndNewlines)
+        try check(context.model.hasCredentials && context.model.canConnect && context.model.connectionSettings == settings,
+                  "Manual settings were not validated, normalized and activated.")
+        let restored = context.duplicateModel()
+        defer { restored.shutdown() }
+        try check(restored.connectionSettings == settings && restored.canConnect,
+                  "Manual settings did not restore from the bundle-scoped Keychain item.")
+        guard let savedItem = try context.keychainSnapshot(),
+              let savedObject = try JSONSerialization.jsonObject(with: savedItem) as? [String: Any] else {
+            throw HarnessFailure(message: "Manual settings were not stored in Keychain.")
+        }
+        try check(savedObject["schemaVersion"] as? Int == 1, "Manual settings did not fix schema version to 1.")
+        let defaults = context.defaults.persistentDomain(forName: context.suite) ?? [:]
+        try check(!defaults.values.contains(where: { String(describing: $0).contains(token) || String(describing: $0).contains("BEGIN CERTIFICATE") }),
+                  "Manual settings leaked credentials into UserDefaults.")
+        let diskLog = try String(contentsOf: context.logDirectory.appendingPathComponent("frpc.log"), encoding: .utf8)
+        try check(!context.model.logs.joined().contains(token) && !diskLog.contains(token) && !diskLog.contains("BEGIN CERTIFICATE"),
+                  "Manual settings leaked credentials into a log.")
+        emit(["event": "pass", "test": "manual_settings_save_restore_schema_and_no_secret_logs"])
+
+        let invalidVariants: [(String, (inout ConnectionSettings) -> Void)] = [
+            ("empty_server", { $0.serverAddress = "" }),
+            ("invalid_ip", { $0.serverAddress = "999.999.999.999" }),
+            ("address_with_scheme", { $0.serverAddress = "https://test.invalid" }),
+            ("empty_dns_label", { $0.serverAddress = "test..invalid" }),
+            ("invalid_server_port", { $0.serverPort = 0 }),
+            ("invalid_remote_port", { $0.remotePort = 65536 }),
+            ("invalid_tls_name", { $0.tlsServerName = "bad name" }),
+            ("insecure_public_url", { $0.publicURL = "http://test.invalid" }),
+            ("url_credentials", { $0.publicURL = "https://\(token)@test.invalid" }),
+            ("url_port", { $0.publicURL = "https://test.invalid:65536" }),
+            ("url_port_overflow", { $0.publicURL = "https://test.invalid:999999999999999999999" }),
+            ("url_empty_port", { $0.publicURL = "https://test.invalid:" }),
+            ("url_query", { $0.publicURL = "https://test.invalid/?token=\(token)" }),
+            ("short_token", { $0.token = "short" }),
+            ("token_control_character", { $0.token = token + "\n" }),
+            ("invalid_ca", { $0.caCertificatePEM = "invalid" }),
+            ("private_key_in_ca", { $0.caCertificatePEM += "\n-----BEGIN PRIVATE KEY-----\n\(token)\n-----END PRIVATE KEY-----" }),
+        ]
+        for (name, change) in invalidVariants {
+            var invalid = settings
+            change(&invalid)
+            var rejected = false
+            var safeError = ""
+            do { try context.model.saveConnectionSettings(invalid) }
+            catch { rejected = true; safeError = error.localizedDescription }
+            try check(rejected && !safeError.contains(token), "Invalid manual settings were accepted or exposed a secret: \(name).")
+            try check(context.model.connectionSettings == settings && (try context.keychainSnapshot()) == savedItem,
+                      "Rejected manual settings changed the active or saved connection: \(name).")
+        }
+        emit(["event": "pass", "test": "invalid_manual_settings_preserve_active_and_saved_configuration", "cases": invalidVariants.count])
     }
 
     private static func runLive(_ arguments: [String]) async throws {
